@@ -50,7 +50,14 @@ if [ -n "$SESSION_ID" ] && [ -n "$PROJECT" ]; then
 fi
 
 # Auto-import git-synced chunks
+# Check both .engram/ (default) and .atl/engram/ (team convention)
+SYNC_DIR=""
 if [ -f "${CWD}/.engram/manifest.json" ]; then
+  SYNC_DIR="${CWD}/.engram"
+elif [ -f "${CWD}/.atl/engram/manifest.json" ]; then
+  SYNC_DIR="${CWD}/.atl/engram"
+fi
+if [ -n "$SYNC_DIR" ]; then
   (
     cd "$CWD" 2>/dev/null || exit 0
     IMPORT_LOCK="/tmp/engram-sync-import-$(printf '%s' "$CWD" | cksum | cut -d ' ' -f 1).lock"
@@ -121,9 +128,9 @@ if [ -f "${CWD}/.engram/manifest.json" ]; then
     fi
     trap 'rm -f "$IMPORT_LOCK/info" 2>/dev/null || true; rmdir "$IMPORT_LOCK" 2>/dev/null || true' EXIT
     if command -v timeout >/dev/null 2>&1; then
-      timeout "${IMPORT_TIMEOUT_SECS}s" engram sync --import >/dev/null 2>&1 || true
+      timeout "${IMPORT_TIMEOUT_SECS}s" engram sync --import --dir "$SYNC_DIR" >/dev/null 2>&1 || true
     else
-      engram sync --import >/dev/null 2>&1 &
+      engram sync --import --dir "$SYNC_DIR" >/dev/null 2>&1 &
       IMPORT_PID=$!
       (sleep "$IMPORT_TIMEOUT_SECS"; kill "$IMPORT_PID" 2>/dev/null || true) &
       WAITER_PID=$!

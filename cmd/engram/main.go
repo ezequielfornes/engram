@@ -1262,6 +1262,7 @@ func cmdSync(cfg store.Config) {
 	doCloud := false
 	project := ""
 	projectProvided := false
+	customDir := ""
 	for i := 2; i < len(os.Args); i++ {
 		switch os.Args[i] {
 		case "--help", "-h", "help":
@@ -1279,6 +1280,11 @@ func cmdSync(cfg store.Config) {
 			if i+1 < len(os.Args) {
 				project = os.Args[i+1]
 				projectProvided = true
+				i++
+			}
+		case "--dir":
+			if i+1 < len(os.Args) {
+				customDir = os.Args[i+1]
 				i++
 			}
 		}
@@ -1301,6 +1307,12 @@ func cmdSync(cfg store.Config) {
 	}
 
 	syncDir := ".engram"
+	if envDir := os.Getenv("ENGRAM_SYNC_DIR"); envDir != "" {
+		syncDir = envDir
+	}
+	if customDir != "" {
+		syncDir = customDir
+	}
 
 	s, err := storeNew(cfg)
 	if err != nil {
@@ -1472,7 +1484,11 @@ func cmdSync(cfg store.Config) {
 }
 
 func printSyncUsage() {
-	fmt.Println("usage: engram sync [--import | --status] [--all] [--cloud --project PROJECT]")
+	fmt.Println("usage: engram sync [--import | --status] [--all] [--dir DIR] [--cloud --project PROJECT]")
+	fmt.Println()
+	fmt.Println("  --dir DIR    Use DIR instead of .engram/ for chunk storage.")
+	fmt.Println("               Also configurable via ENGRAM_SYNC_DIR env var.")
+	fmt.Println()
 	fmt.Println("Local sync exports project-scoped chunks to .engram/ by default.")
 	fmt.Println("Cloud sync requires an explicit --project and never runs from --help.")
 }

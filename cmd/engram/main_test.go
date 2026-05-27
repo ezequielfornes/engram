@@ -1456,3 +1456,108 @@ func TestObsidianExportWatchModeCallsInjectedWatcher(t *testing.T) {
 		t.Fatalf("expected non-nil Logf in WatcherConfig")
 	}
 }
+
+func TestCmdSyncDirFlag(t *testing.T) {
+	workDir := t.TempDir()
+	withCwd(t, workDir)
+
+	customDir := filepath.Join(workDir, "custom-sync-dir")
+
+	exportCfg := testConfig(t)
+	importCfg := testConfig(t)
+
+	mustSeedObservation(t, exportCfg, "s-dir", "dir-project", "note", "dir test", "dir content", "project")
+
+	// Export with --dir flag
+	withArgs(t, "engram", "sync", "--all", "--dir", customDir)
+	exportOut, exportErr := captureOutput(t, func() { cmdSync(exportCfg) })
+	if exportErr != "" {
+		t.Fatalf("expected no stderr from export with --dir, got: %q", exportErr)
+	}
+	if !strings.Contains(exportOut, "Created chunk") {
+		t.Fatalf("unexpected export output: %q", exportOut)
+	}
+
+	// Verify chunk was created in custom directory
+	if _, err := os.Stat(filepath.Join(customDir, "manifest.json")); err != nil {
+		t.Fatalf("manifest.json not found in custom dir: %v", err)
+	}
+	chunksDir := filepath.Join(customDir, "chunks")
+	entries, err := os.ReadDir(chunksDir)
+	if err != nil {
+		t.Fatalf("failed to read chunks dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 chunk file, got %d", len(entries))
+	}
+
+	// Verify default .engram/ was NOT created
+	if _, err := os.Stat(filepath.Join(workDir, ".engram", "manifest.json")); err == nil {
+		t.Fatalf(".engram/manifest.json should not exist when --dir is used")
+	}
+
+	// Import from custom dir into a different store
+	withArgs(t, "engram", "sync", "--import", "--dir", customDir)
+	importOut, importErr := captureOutput(t, func() { cmdSync(importCfg) })
+	if importErr != "" {
+		t.Fatalf("expected no stderr from import with --dir, got: %q", importErr)
+	}
+	if !strings.Contains(importOut, "Imported 1 new chunk(s)") {
+		t.Fatalf("unexpected import output: %q", importOut)
+	}
+}
+
+func TestCmdSyncDirEnvVar(t *testing.T) {
+	workDir := t.TempDir()
+	withCwd(t, workDir)
+
+	customDir := filepath.Join(workDir, "env-sync-dir")
+
+	cfg := testConfig(t)
+	mustSeedObservation(t, cfg, "s-env", "env-project", "note", "env test", "env content", "project")
+
+	// Set env var
+	t.Setenv("ENGRAM_SYNC_DIR", customDir)
+
+	// Export using env var (no --dir flag)
+	withArgs(t, "engram", "sync", "--all")
+	exportOut, _ := captureOutput(t, func() { cmdSync(cfg) })
+	if !strings.Contains(exportOut, "Created chunk") {
+		t.Fatalf("unexpected export output with env var: %q", exportOut)
+	}
+
+	// Verify chunk was created in env var directory
+	if _, err := os.Stat(filepath.Join(customDir, "manifest.json")); err != nil {
+		t.Fatalf("manifest.json not found in env var dir: %v", err)
+	}
+}
+
+func TestCmdSyncDirFlagOverridesEnvVar(t *testing.T) {
+	workDir := t.TempDir()
+	withCwd(t, workDir)
+
+	envDir := filepath.Join(workDir, "env-dir")
+	flagDir := filepath.Join(workDir, "flag-dir")
+
+	cfg := testConfig(t)
+	mustSeedObservation(t, cfg, "s-override", "override-project", "note", "override test", "override content", "project")
+
+	// Set env var AND --dir flag — flag should win
+	t.Setenv("ENGRAM_SYNC_DIR", envDir)
+
+	withArgs(t, "engram", "sync", "--all", "--dir", flagDir)
+	exportOut, _ := captureOutput(t, func() { cmdSync(cfg) })
+	if !strings.Contains(exportOut, "Created chunk") {
+		t.Fatalf("unexpected export output: %q", exportOut)
+	}
+
+	// Flag dir should have the chunk
+	if _, err := os.Stat(filepath.Join(flagDir, "manifest.json")); err != nil {
+		t.Fatalf("manifest.json not found in flag dir: %v", err)
+	}
+
+	// Env dir should NOT have the chunk
+	if _, err := os.Stat(filepath.Join(envDir, "manifest.json")); err == nil {
+		t.Fatalf("manifest.json should not exist in env dir when --dir flag is used")
+	}
+}
